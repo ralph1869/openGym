@@ -1,11 +1,12 @@
 // Web Push subscribe/unsubscribe — requires a signed-in profile (subscriptions are stored
 // server-side per user, same as everything else under /api).
 import { api } from './api.js'
+import { CLOUDFLARE_PERSONAL } from './capabilities.js'
 
 // main.jsx registers the service worker on https only, so on any other origin there is no
 // worker and `navigator.serviceWorker.ready` never settles — the toggle looked usable and hung.
 const secureOrigin = () => typeof location === 'undefined' || location.protocol === 'https:'
-export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && secureOrigin()
+export const pushSupported = () => !CLOUDFLARE_PERSONAL && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && secureOrigin()
 export const pushPermission = () => (pushSupported() ? Notification.permission : 'unsupported')
 
 const urlBase64ToUint8Array = b64 => {

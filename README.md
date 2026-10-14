@@ -123,6 +123,12 @@ if you want to try it before installing anything.
 
 The full list of what changed release by release is in the [changelog](CHANGELOG.md).
 
+## Cloudflare personal edition
+
+This fork also supports a single-account **Cloudflare Worker + Static Assets + D1** deployment.
+Passkey sign-in, workout-state sync and JSON import/export use the original frontend; Docker remains available.
+See [cloudflare/README.md](cloudflare/README.md) for setup, tests, security boundaries and the retained exercise-media licence.
+
 ## Quick start
 
 You need [Docker](https://docs.docker.com/get-docker/) with Compose.

@@ -12,4 +12,5 @@
  * @param {{allow_guest?: boolean}|null|undefined} config Parsed /api/config body, or null.
  * @returns {boolean} true when the guest entrance may be shown and used.
  */
-export const guestAllowed = config => !(config && config.allow_guest === false)
+import { CLOUDFLARE_PERSONAL } from './capabilities.js'
+export const guestAllowed = config => !CLOUDFLARE_PERSONAL && !(config && config.allow_guest === false)

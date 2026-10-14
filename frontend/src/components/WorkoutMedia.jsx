@@ -21,6 +21,7 @@ import { useMediaPicker } from './CustomMediaField.jsx'
 import { CustomThumb, MediaView } from './CustomMedia.jsx'
 import { Button } from './ui.jsx'
 import Icon from './Icon.jsx'
+import { supports } from '../lib/capabilities.js'
 
 const toast = m => useUI.getState().toast(m)
 
@@ -38,7 +39,7 @@ export const workoutMediaCount = w => workoutMediaOf(w).length
  * a file only a workout names. A config not known yet (an offline start) is not that answer, and
  * a guest or a phone in local mode keeps its files on the device either way.
  */
-export const serverTakesWorkoutMedia = (user, config) => !user || !config || !config.media || !!config.media.workouts
+export const serverTakesWorkoutMedia = (user, config) => supports(config, 'media_upload') && (!user || !config || !config.media || !!config.media.workouts)
 
 /**
  * The grid of a workout's photos and videos with its Add tile. `hint` adds the one-line

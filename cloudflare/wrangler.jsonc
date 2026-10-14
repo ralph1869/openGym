@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "opengym-personal",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-14",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": ["/api", "/api/*"]
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "opengym-personal",
+    "database_id": "20b9fca6-a6a2-419c-ba11-702aa936bac4",
+    "migrations_dir": "migrations"
+  }],
+  "vars": {
+    "ORIGIN": "https://opengym-personal.ralph180609.workers.dev",
+    "RP_ID": "opengym-personal.ralph180609.workers.dev",
+    "DEFAULT_LANG": "zh-CN",
+    "SESSION_DAYS": "30",
+    "SOURCE_URL": "https://github.com/ralph1869/openGym/tree/feat/cloudflare-d1"
+  },
+  "observability": { "enabled": false }
+}

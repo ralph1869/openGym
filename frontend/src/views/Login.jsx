@@ -11,6 +11,7 @@ import { Button, Segmented } from '../components/ui.jsx'
 import { askAddDeviceData } from '../sheets.jsx'
 import { passwordOn, PasswordRegisterForm, openPasswordSignIn } from '../components/PasswordAuth.jsx'
 import { openDeviceLinkRedeem } from '../components/Passkeys.jsx'
+import { CLOUDFLARE_PERSONAL, supports, registrationAllowed, sourceUrl } from '../lib/capabilities.js'
 
 function RegisterSheet({ close }) {
   const { setUser, pushState, pullState, loadConfig } = useStore()
@@ -104,11 +105,11 @@ export default function Login() {
         <Button variant="primary" icon="fingerprint" onClick={signIn}>{t('Sign in with passkey')}</Button>
         <div style={{ height: 10 }} />
         {pwOn && <><Button icon="key" onClick={() => openPasswordSignIn()}>{t('Sign in with password')}</Button><div style={{ height: 10 }} /></>}
-        <Button icon="plusCircle" onClick={register}>{t('Create new profile')}</Button>
+        {registrationAllowed(config) && <Button icon="plusCircle" onClick={register}>{t('Create new profile')}</Button>}
         {/* Already signed in on another device: a code from there gives this one a passkey of
             its own (#95), instead of a new, empty profile. */}
         <div style={{ height: 10 }} />
-        <Button variant="ghost" className="dim" icon="qr" onClick={openDeviceLinkRedeem}>{t('Use a code from your other device')}</Button>
+        {supports(config, 'device_link') && <Button variant="ghost" className="dim" icon="qr" onClick={openDeviceLinkRedeem}>{t('Use a code from your other device')}</Button>}
         {canGuest && <div style={{ height: 4 }} />}
       </> : pwOn ? <>
         {/* Plain http on a LAN address, or a browser without passkey support: the password is
@@ -124,6 +125,11 @@ export default function Login() {
         // so say that plainly instead of offering a local profile that cannot be created.
         : t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}</div>}
       {canGuest && <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>}
+      {(CLOUDFLARE_PERSONAL || config?.deployment === 'cloudflare-personal') && <div className="dim small" style={{ marginTop: 20, lineHeight: 1.6 }}>
+        Cloudflare 个人版 · 仅一个账号。使用已同步的 Passkey 在其他设备登录。<br />
+        {config?.registration_open === false && '注册已关闭；首次设置需要实例所有者启用邀请码。'}<br />
+        <a href={sourceUrl(config)} target="_blank" rel="noopener">{t('Source code')}</a>
+      </div>}
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{pwOn ? t('Passkeys use {0}. A password works too, where passkeys do not.', bio()) : t('Passkeys use {0}. No passwords to remember.', bio())}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>
   )

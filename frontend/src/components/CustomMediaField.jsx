@@ -22,6 +22,7 @@ import { limitsFrom, fmtMB, MB } from '../lib/media-limits.js'
 import { CustomThumb } from './CustomMedia.jsx'
 import { Row, Button } from './ui.jsx'
 import Icon from './Icon.jsx'
+import { supports } from '../lib/capabilities.js'
 
 const toast = m => useUI.getState().toast(m)
 
@@ -81,9 +82,10 @@ export function useMediaPicker() {
   // guest in the browser is on that same server, and what it picks would be owed and never sent
   // once it signs up; a phone in local mode has no server (a config left from an earlier pairing
   // says nothing about it).
-  const serverLacks = (!!user || !MOBILE) && !!config && !config.media
+  const serverLacks = !supports(config, 'media_upload') || ((!!user || !MOBILE) && !!config && !config.media)
 
   const pick = async file => {
+    if (serverLacks) { toast(t('Your server does not store photos and videos yet.')); return null }
     if (!file) return null
     setBusy(true)
     setWarning(null)

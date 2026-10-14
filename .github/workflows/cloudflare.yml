@@ -1,0 +1,39 @@
+name: Cloudflare personal edition
+on:
+  push:
+    branches: [main, feat/cloudflare-d1]
+    paths: ['cloudflare/**', 'frontend/**', 'api/sync-stamps.js', '.github/workflows/cloudflare.yml']
+  pull_request:
+    paths: ['cloudflare/**', 'frontend/**', 'api/sync-stamps.js', '.github/workflows/cloudflare.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: UTC
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            cloudflare/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm ci --prefix cloudflare
+      - run: npm test -- --maxWorkers=4
+        working-directory: frontend
+      - run: npm run build
+        working-directory: cloudflare
+      - run: npm test
+        working-directory: cloudflare
+      - run: npm run check
+        working-directory: cloudflare
