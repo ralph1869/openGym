@@ -44,7 +44,7 @@ npm run check
 ## 免费部署
 
 1. 在自己的 Cloudflare 账户创建独立的 `opengym-personal` D1。把 UUID 填入 `wrangler.jsonc`；它不是密钥。只对这个新数据库应用 `migrations/0001_initial.sql`。
-2. 配置 `ORIGIN` 为完整 HTTPS 地址，`RP_ID` 为同一 hostname。默认 Workers 地址可使用 `opengym-personal.<账户子域>.workers.dev`，不需要改 DNS。
+2. 配置 `ORIGIN` 为完整 HTTPS 地址，`RP_ID` 为同一 hostname。本实例使用 `https://gym.ralph.run` 和 `gym.ralph.run`。API 只接受配置的 origin；同一 Worker 的其他域名会返回 `403 wrong-origin`，避免混用账号、Cookie 和 Passkey。新实例也可在首次创建账号前选择默认 `workers.dev` 地址。
 3. 在已连接 GitHub 的 Workers 构建流程使用本仓库适配分支，构建命令为 `npm ci --prefix frontend && npm ci --prefix cloudflare && npm --prefix cloudflare run build`；从仓库根目录执行部署命令 `npm --prefix cloudflare run deploy`。或在已有所需授权的 CLI 中执行 `cd cloudflare && npm run deploy`。
 4. 使用既有权限即可部署时不新增授权。若需要新 token/OAuth，须由账户所有者批准：所需资源为该账户的 Worker 脚本/静态资源部署及 D1；不需要 R2、AI、付费服务或无关 DNS 权限。不要把 token 放进仓库、聊天或静态资源。
 
@@ -57,6 +57,8 @@ npm run check
 所有者在密码管理器中选择高熵邀请码（建议 32 个随机字母/数字；界面最多 40 字符），将去除首尾空白并转成大写后的 SHA-256 十六进制摘要设置为 Worker secret `REGISTRATION_TOKEN_SHA256`。原邀请码保留在自己的密码管理器，不发送给助手。创建账号时输入它，并在设备上确认 Passkey。账号创建成功后数据库约束会永久关闭第二个账号的注册；该哈希可以由所有者随后移除。
 
 选择能跨设备同步的 Passkey（iCloud Keychain / Google Password Manager 等），手机登录同一个账号。需要本人验收手机生物识别/Passkey、PWA 离线重连和跨设备同步。若以后更换 hostname，原 Passkey 不能直接迁移到新 RP ID；不要随意改域名。
+
+修改控制台中的域名变量时也应同步此配置文件，并更新 Workers 构建命令固定的 Git 提交。注册仍需既有 `REGISTRATION_TOKEN_SHA256` 密钥；部署不会生成或替换邀请码。
 
 ## 许可与源码
 

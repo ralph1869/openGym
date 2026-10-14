@@ -226,9 +226,14 @@ async function handle(req, env, path) {
 }
 export default {
   async fetch(req, env) {
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url), path = url.pathname;
     try {
-      if (path === '/api' || path.startsWith('/api/')) return await handle(req, env, path);
+      if (path === '/api' || path.startsWith('/api/')) {
+        // A second route to the same Worker must not share account APIs with the
+        // configured WebAuthn origin, even when a caller spoofs the Origin header.
+        if (url.origin !== site(env).origin) throw new HttpError(403, 'Use the configured instance address', 'wrong-origin');
+        return await handle(req, env, path);
+      }
       const asset = await env.ASSETS.fetch(req);
       if (asset.status !== 404 || !['GET', 'HEAD'].includes(req.method)) return asset;
       if (!path.startsWith('/exercise-media/') && !path.split('/').at(-1).includes('.') &&

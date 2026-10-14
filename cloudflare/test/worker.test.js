@@ -59,6 +59,23 @@ test('no configured invite closes signup instead of permitting a public first ac
   assert.equal((await h.request('/api/config')).data.registration_open, false);
   assert.equal((await h.registerOptions()).status, 403);
 });
+test('another Worker hostname cannot share account APIs or create challenges', async t => {
+  const h = await setup(t), { cookie } = await h.register();
+  const staleHost = 'https://old-gym.example';
+  for (const path of ['/api/health', '/api/config', '/api/me', '/api/data']) {
+    const r = await h.mf.dispatchFetch(staleHost + path, { headers: { Cookie: cookie } });
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).code, 'wrong-origin');
+  }
+  for (const path of ['/api/login/options', '/api/register/options', '/api/login/verify']) {
+    const r = await h.mf.dispatchFetch(staleHost + path, { method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).code, 'wrong-origin');
+  }
+  assert.equal((await h.db.prepare('SELECT COUNT(*) AS n FROM challenges').first()).n, 0);
+  assert.equal((await h.request('/api/me', { cookie })).status, 200);
+});
 test('bad invite, registration UV and wrong WebAuthn origin are refused', async t => {
   const h = await setup(t), a = authenticator();
   assert.equal((await h.request('/api/register/options', { method: 'POST', body: { name: 'x', code: 'WRONG' } })).status, 403);

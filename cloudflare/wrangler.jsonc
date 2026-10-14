@@ -19,8 +19,8 @@
     "migrations_dir": "migrations"
   }],
   "vars": {
-    "ORIGIN": "https://opengym-personal.ralph180609.workers.dev",
-    "RP_ID": "opengym-personal.ralph180609.workers.dev",
+    "ORIGIN": "https://gym.ralph.run",
+    "RP_ID": "gym.ralph.run",
     "DEFAULT_LANG": "zh-CN",
     "SESSION_DAYS": "30",
     "SOURCE_URL": "https://github.com/ralph1869/openGym/tree/feat/cloudflare-d1"
