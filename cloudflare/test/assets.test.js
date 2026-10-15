@@ -22,7 +22,7 @@ test('the production bundle serves the app, every licensed media asset and notic
   const mf = new Miniflare(convertV4MiniflareOptions({ name: 'assets-test', log: new Log(LogLevel.ERROR), script: bundle.outputFiles[0].text,
     modules: true, compatibilityDate: '2026-10-14', d1Databases: { DB: 'assets-test' },
     bindings: { ORIGIN: 'https://gym.example' },
-    assets: { directory: out, binding: 'ASSETS', run_worker_first: ['/api', '/api/*'], routerConfig: { has_user_worker: true },
+    assets: { directory: out, binding: 'ASSETS', run_worker_first: JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8')).assets.run_worker_first, routerConfig: { has_user_worker: true },
       assetConfig: { html_handling: 'none', not_found_handling: 'none' } }
   }));
   t.after(() => mf.dispose());
@@ -41,4 +41,8 @@ test('the production bundle serves the app, every licensed media asset and notic
   for (const p of ['/exercise-media/still/does-not-exist.webp', '/assets/missing.js']) assert.equal((await request(p, { Accept: 'text/html' })).status, 404);
   const api = await request('/api/data', { Accept: 'text/html' }); assert.equal(api.status, 401); assert.match(api.headers.get('content-type'), /application\/json/);
   assert.equal((await request('/api/missing', { Accept: 'text/html' })).status, 404);
+  for (const path of ['/mcp', '/oauth/authorize', '/.well-known/oauth-authorization-server']) {
+    const r = await request(path, { Accept: 'text/html' });
+    assert.equal(r.status, 404); assert.match(r.headers.get('content-type'), /application\/json/);
+  }
 });

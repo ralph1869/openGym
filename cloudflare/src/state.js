@@ -73,18 +73,26 @@ export function prepareState(cur, body) {
   return { state, clientRev: rev + 1 };
 }
 
-export async function writeState(db, uid, cur, prepared) {
+export async function writeState(db, uid, cur, prepared, { authorization = null, receipt = null } = {}) {
   let text;
   try { text = JSON.stringify(prepared.state); } catch { throw new HttpError(400, 'invalid state'); }
   const bytes = utf8.encode(text).byteLength;
   if (bytes > MAX_STATE_BYTES) throw new HttpError(413, 'state exceeds the 5 MiB personal-instance limit', 'too-large');
   const chunks = splitText(text), wid = prepared.state._wid;
   const fields = [prepared.state._rev, wid, chunks.length, bytes, await sha256(text), Date.now()];
+  // OAuth validity is checked again INSIDE the CAS transaction, so revocation/expiry
+  // between the HTTP authentication and this write cannot grant stale write access.
+  const authSQL = authorization ? ` AND EXISTS (SELECT 1 FROM oauth_access a
+    JOIN oauth_grants g ON g.id=a.grant_id JOIN users u ON u.id=g.user_id
+    WHERE a.hash=? AND g.id=? AND u.id=? AND g.revoked=0 AND g.sv=u.session_version
+    AND a.expires>unixepoch()*1000+999 AND g.expires>unixepoch()*1000+999
+    AND instr(' '||g.scope||' ',' '||?||' ')>0)` : '';
+  const authParams = authorization ? [authorization.accessHash, authorization.grantId, uid, authorization.scope] : [];
   const claim = cur
     ? db.prepare(`UPDATE states SET rev=?, wid=?, chunks=?, bytes=?, sha256=?, updated=?
-        WHERE user_id=? AND rev=? AND wid=?`).bind(...fields, uid, cur._rev, cur._wid)
+        WHERE user_id=? AND rev=? AND wid=?${authSQL}`).bind(...fields, uid, cur._rev, cur._wid, ...authParams)
     : db.prepare(`INSERT INTO states (rev,wid,chunks,bytes,sha256,updated,user_id)
-        VALUES (?,?,?,?,?,?,?) ON CONFLICT(user_id) DO NOTHING`).bind(...fields, uid);
+        SELECT ?,?,?,?,?,?,? WHERE 1=1${authSQL} ON CONFLICT(user_id) DO NOTHING`).bind(...fields, uid, ...authParams);
   // D1 batch is a transaction. The CAS is checked INSIDE it, and every following write is
   // gated by the new random write id. A lost race cannot delete or insert a single chunk.
   // Any SQL failure rolls back the manifest, deletion and every inserted chunk together.
@@ -94,7 +102,10 @@ export async function writeState(db, uid, cur, prepared) {
       AND EXISTS (SELECT 1 FROM states WHERE user_id=? AND wid=?)`).bind(uid, uid, wid),
     ...chunks.map((data, n) => db.prepare(`INSERT INTO state_chunks(user_id,wid,n,data)
       SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM states WHERE user_id=? AND wid=?)`)
-      .bind(uid, wid, n, data, uid, wid))
+      .bind(uid, wid, n, data, uid, wid)),
+    ...(receipt ? [db.prepare(`INSERT INTO mcp_receipts(user_id,key_hash,payload_hash,result,created)
+      SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM states WHERE user_id=? AND wid=?)`)
+      .bind(uid, receipt.keyHash, receipt.payloadHash, JSON.stringify(receipt.result), Date.now(), uid, wid)] : [])
   ]);
   return result[0].meta.changes === 1;
 }

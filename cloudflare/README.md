@@ -2,6 +2,8 @@
 
 在原 openGym 1.4.1 前端旁新增 Workers + Static Assets + D1。原 `api/`、Docker、训练逻辑和数据导入导出保留。适用于一个人的浏览器/PWA、多设备使用同一个已同步的 Passkey。
 
+可写 MCP 的实现、OAuth 安全边界和本人接入步骤见 [MCP.md](MCP.md)。默认关闭，部署代码不会自动授权或接入 dot。
+
 ## 提供的能力
 
 - 一个账号、邀请码注册、要求用户验证的 Passkey 登录。

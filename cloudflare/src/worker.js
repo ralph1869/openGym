@@ -4,6 +4,8 @@ import {
 } from '@simplewebauthn/server';
 import { HttpError, b64url, unb64url, randomToken, sha256, equalHash, utf8 } from './crypto.js';
 import { MAX_STATE_BYTES, forClient, readState, prepareState, writeState } from './state.js';
+import { handleOAuth, mcpEnabled } from './oauth.js';
+import { handleMcp } from './mcp.js';
 
 const TTL = 5 * 60000;
 const publicUser = u => ({ id: u.id, name: u.name, admin: false });
@@ -120,7 +122,7 @@ async function handle(req, env, path) {
   if (key === 'GET /api/config') return json(200, {
     invite_only: true, allow_guest: false, password_login: false,
     registration_open: await registrationOpen(env), default_lang: env.DEFAULT_LANG || 'zh-CN',
-    deployment: 'cloudflare-personal', capabilities: CAPS, coach: null,
+    deployment: 'cloudflare-personal', capabilities: { ...CAPS, mcp: mcpEnabled(env) }, coach: null,
     source_url: env.SOURCE_URL || 'https://github.com/ralph1869/openGym/tree/feat/cloudflare-d1'
   });
   csrf(req, env);
@@ -228,10 +230,14 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url), path = url.pathname;
     try {
-      if (path === '/api' || path.startsWith('/api/')) {
+      const oauthPath = path.startsWith('/oauth/') || path.startsWith('/.well-known/oauth-') || path === '/api/integrations' || path.startsWith('/api/integrations/');
+      if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || oauthPath) {
         // A second route to the same Worker must not share account APIs with the
         // configured WebAuthn origin, even when a caller spoofs the Origin header.
         if (url.origin !== site(env).origin) throw new HttpError(403, 'Use the configured instance address', 'wrong-origin');
+        const context = { json, site, requireUser, csrf, readBody, throttle };
+        if (path === '/mcp') return await handleMcp(req, env, context);
+        if (oauthPath) return await handleOAuth(req, env, path, context);
         return await handle(req, env, path);
       }
       const asset = await env.ASSETS.fetch(req);

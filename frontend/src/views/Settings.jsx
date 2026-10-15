@@ -869,6 +869,8 @@ export default function Settings({ page = null, find = null, via = null }) {
         </> : user ? <>
           {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
           {supports(config, 'passkey_management') && <PasskeysRow state={passkeys.st} changed={credsChanged} />}
+          {config?.capabilities?.mcp === true && <Row icon="key" iconTint="var(--blue)" title="已连接的 AI 助手"
+            subtitle="管理训练读写授权，随时撤销" accessory="chevron" onClick={() => window.location.assign('/oauth/connections')} />}
           {supports(config, 'device_link') && <DeviceLinkRow state={passkeys.st} />}
           {supports(config, 'pairing') && <Row icon="qr" iconTint="var(--blue)" title={t('Pair the mobile app')} subtitle={t('Connect the openGym app on your phone to this account.')} accessory="chevron"
             onClick={() => useUI.getState().openSheet(close => <PairSheet close={close} />)} />}

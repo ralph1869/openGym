@@ -10,7 +10,7 @@
     "binding": "ASSETS",
     "html_handling": "none",
     "not_found_handling": "none",
-    "run_worker_first": ["/api", "/api/*"]
+    "run_worker_first": ["/api", "/api/*", "/mcp", "/oauth/*", "/.well-known/*"]
   },
   "d1_databases": [{
     "binding": "DB",
@@ -19,6 +19,8 @@
     "migrations_dir": "migrations"
   }],
   "vars": {
+    "MCP_ENABLED": "false",
+    "MCP_REDIRECT_URIS": "[]",
     "ORIGIN": "https://gym.ralph.run",
     "RP_ID": "gym.ralph.run",
     "DEFAULT_LANG": "zh-CN",

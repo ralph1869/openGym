@@ -66,4 +66,17 @@ describe('the service worker and the API', () => {
     const offline = await env.get('https://example.com/myGym/manifest.json')
     expect(offline.res.status).toBe(200)
   })
+  for (const base of ['https://gym.example.com/', 'https://gym.example.com/myGym/']) {
+    it(`never caches OAuth HTML/MCP or replaces authorization with an offline shell at ${base}`, async () => {
+      const env = worker(base + 'sw.js')
+      env.net.body = { privateConsent: 'synthetic fixture' }
+      for (const path of ['oauth/authorize?state=fixture', 'oauth/connections', '.well-known/oauth-authorization-server', '.well-known/oauth-protected-resource/mcp', 'mcp']) {
+        expect((await env.get(base + path)).intercepted).toBe(false)
+        env.net.up = false
+        expect((await env.get(base + path)).intercepted).toBe(false)
+        env.net.up = true
+      }
+      expect(env.store.size).toBe(0)
+    })
+  }
 })
