@@ -46,3 +46,10 @@ test('the production bundle serves the app, every licensed media asset and notic
     assert.equal(r.status, 404); assert.match(r.headers.get('content-type'), /application\/json/);
   }
 });
+
+test('Git deploys preserve Dashboard-owned MCP variables without explicit default overrides', () => {
+  const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+  assert.equal(config.keep_vars, true);
+  assert.equal(Object.hasOwn(config.vars, 'MCP_ENABLED'), false);
+  assert.equal(Object.hasOwn(config.vars, 'MCP_REDIRECT_URIS'), false);
+});

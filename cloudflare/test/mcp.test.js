@@ -260,3 +260,89 @@ test('consent HTML escapes untrusted client names and stale callbacks cannot byp
   await h.db.prepare('UPDATE oauth_clients SET redirects=? WHERE id=?').bind(JSON.stringify(['https://old-unapproved.example/callback']), c.client_id).run();
   assert.equal((await h.request('/oauth/authorize?' + new URLSearchParams({ ...c.authorization, redirect_uri: 'https://old-unapproved.example/callback' }), { cookie: h.cookie })).status, 400);
 });
+
+test('structured per-side loads and asymmetric sets roundtrip with complete durable receipts', async t => {
+  const h = await setup(t), c = await h.connection(), token = c.access_token;
+  const context = await h.value('get_training_context', {}, token), x = workout();
+  x.entries = [
+    { exercise_id: '0025', mode: 'reps', load_basis: 'plates_per_side', sets: [{ weight: 20, reps: 10 }] },
+    { exercise_id: '0025', mode: 'reps', load_basis: 'app_display', execution: 'unilateral', sets: [{ sides: { L: { weight: 15, reps: 10, done: true }, R: { weight: 12.5, reps: 8, done: false } } }] }
+  ];
+  const args = { request_id: 'structured-roundtrip', cursor: context.cursor, workout: x };
+  const saved = await h.value('log_workout', args, token), read = await h.value('get_workout', { workout_id: saved.workout_id }, token);
+  assert.deepEqual(saved.workout, read.workout); assert.equal(saved.version, read.version);
+  assert.deepEqual(saved.stats, read.stats); assert.equal(saved.stats.exercise_count, 2); assert.equal(saved.stats.set_rows, 2); assert.equal(saved.stats.set_units, 3); assert.equal(saved.stats.completed_set_units, 2);
+  assert.equal(saved.workout.entries[0].sets[0].w, 20); assert.equal(saved.workout.entries[0].target.side, undefined); assert.equal(saved.workout.entries[0].target.loadBasis, 'plates_per_side');
+  assert.equal(saved.workout.entries[1].sets[0].r, 18); assert.equal(saved.workout.entries[1].sets[0].done, false); assert.equal(saved.workout.vol, 350);
+  const update = { request_id: 'side-append-update', cursor: read.cursor, expected_version: read.version, workout_id: saved.workout_id,
+    patch: { unit: 'kg', set_changes: [{ entry_index: 1, set_index: 0, side: 'R', weight: 17.5, reps: 9, done: true }], append_sets: [{ entry_index: 0, sets: [{ weight: 22.5, reps: 10 }] }], append_entries: [workout().entries[0]] } };
+  const changed = await h.value('update_workout', update, token);
+  assert.equal(changed.stats.exercise_count, 3); assert.equal(changed.stats.set_rows, 5); assert.equal(changed.stats.set_units, 6); assert.equal(changed.stats.completed_set_units, 6);
+  assert.equal(changed.workout.entries[1].sets[0].w, 17.5); assert.equal(changed.workout.entries[1].sets[0].r, 19);
+  const reread = await h.value('get_workout', { workout_id: saved.workout_id }, token);
+  assert.deepEqual(reread.workout, changed.workout); assert.equal(reread.version, changed.version);
+  const replay = await h.value('update_workout', update, token); assert.deepEqual(replay, { ...changed, replayed: true });
+  const receipt = await h.value('get_write_result', { request_id: update.request_id }, token); assert.deepEqual(receipt, { status: 'committed', ...changed });
+  // An earlier receipt remains a snapshot of what that operation committed, not today's record.
+  assert.deepEqual((await h.value('log_workout', args, token)).workout, saved.workout);
+  assert.equal((await h.appState()).workouts[0].entries.length, 3);
+  const collision = await h.rpc('update_workout', { ...update, patch: { ...update.patch, note: 'different intent' } }, token);
+  assert.equal(collision.data.result.structuredContent.code, 'idempotency-conflict');
+});
+test('two append corrections with the same cursor have one winner and never merge or overwrite', async t => {
+  const h = await setup(t); await h.seed(oldState()); const c = await h.connection(), token = c.access_token;
+  const read = await h.value('get_workout', { workout_id: 'legacy-session' }, token);
+  const args = { cursor: read.cursor, workout_id: read.workout_id, expected_version: read.version, patch: { unit: 'kg', append_entries: [workout().entries[0]] } };
+  const results = await Promise.all(['append-race-one', 'append-race-two'].map(request_id => h.rpc('update_workout', { ...args, request_id }, token)));
+  assert.equal(results.filter(r => !r.data.result.isError).length, 1);
+  assert.equal(results.filter(r => r.data.result.structuredContent.code === 'revision-conflict').length, 1);
+  const stored = await h.appState(); assert.equal(stored.workouts[0].entries.length, 2); assert.deepEqual(stored.workouts[0].media, [{ id: 'fixture-media' }]);
+  assert.equal((await h.db.prepare('SELECT COUNT(*) AS n FROM mcp_receipts').first()).n, 1);
+});
+test('unsupported side data, invalid appends and missing matches fail atomically; catalogue search never creates exercises', async t => {
+  const h = await setup(t); await h.seed(oldState()); const c = await h.connection(), token = c.access_token;
+  const read = await h.value('get_workout', { workout_id: 'legacy-session' }, token), before = await h.appState();
+  const patches = [
+    { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, weight: 99 }], append_entries: [{ ...workout().entries[0], exercise_id: 'bad-id-rollback' }] },
+    { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, side: 'L', weight: 10 }] },
+    { unit: 'kg', append_entries: [{ ...workout().entries[0], exercise_id: 'never-create-me' }] },
+    { unit: 'kg', append_entries: [{ ...workout().entries[0], execution: 'unilateral', sets: [{ weight: 15, reps: 10 }] }] },
+    { unit: 'kg', append_entries: [{ ...workout().entries[0], sets: [{ weight: 15, reps: 10, done: false }] }] },
+    { unit: 'kg', append_sets: [{ entry_index: 0, sets: [{ weight: null, reps: 10 }] }] },
+    { unit: 'kg', append_entries: [{ ...workout().entries[0], load_basis: 'unknown' }] }
+  ];
+  for (let i = 0; i < patches.length; i++) {
+    const bad = await h.rpc('update_workout', { request_id: 'invalid-append-' + i, cursor: read.cursor, workout_id: read.workout_id, expected_version: read.version, patch: patches[i] }, token);
+    assert.equal(bad.data.result.isError, true); assert.deepEqual(await h.appState(), before);
+  }
+  const zh = await h.value('search_exercises', { query: '坐姿划船', equipment: 'cable', limit: 30 }, token);
+  assert.ok(zh.exercises.some(e => e.id === '0861')); assert.ok(zh.exercises.every(e => e.source === 'catalogue' && e.equipment === 'cable'));
+  assert.deepEqual((await h.value('search_exercises', { query: 'nonexistent original machine' }, token)).exercises, []);
+  assert.deepEqual(await h.appState(), before); assert.equal((await h.db.prepare('SELECT COUNT(*) AS n FROM mcp_receipts').first()).n, 0);
+});
+
+test('concurrent identical append corrections replay one complete snapshot without duplicate entries', async t => {
+  const h = await setup(t); await h.seed(oldState()); const c = await h.connection(), token = c.access_token;
+  const read = await h.value('get_workout', { workout_id: 'legacy-session' }, token);
+  const args = { request_id: 'same-append-concurrent', cursor: read.cursor, workout_id: read.workout_id, expected_version: read.version, patch: { unit: 'kg', append_entries: [workout().entries[0]] } };
+  const results = await Promise.all([h.rpc('update_workout', args, token), h.rpc('update_workout', args, token)]);
+  assert.ok(results.every(r => !r.data.result.isError));
+  assert.deepEqual(results[0].data.result.structuredContent.workout, results[1].data.result.structuredContent.workout);
+  assert.equal((await h.appState()).workouts[0].entries.length, 2);
+  assert.equal((await h.db.prepare('SELECT COUNT(*) AS n FROM mcp_receipts').first()).n, 1);
+});
+
+test('an append correction and its full receipt roll back together after a D1 receipt fault', async t => {
+  const h = await setup(t); await h.seed(oldState()); const c = await h.connection(), token = c.access_token;
+  const read = await h.value('get_workout', { workout_id: 'legacy-session' }, token), before = await h.appState();
+  const args = { request_id: 'append-receipt-rollback', cursor: read.cursor, workout_id: read.workout_id, expected_version: read.version,
+    patch: { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, weight: 45 }], append_entries: [workout().entries[0]] } };
+  await h.db.exec("CREATE TRIGGER fixture_append_receipt_fail BEFORE INSERT ON mcp_receipts BEGIN SELECT RAISE(ABORT,'synthetic append fault'); END;");
+  assert.equal((await h.rpc('update_workout', args, token)).status, 503);
+  assert.deepEqual(await h.appState(), before); assert.equal((await h.value('get_write_result', { request_id: args.request_id }, token)).status, 'not_found');
+  await h.db.exec('DROP TRIGGER fixture_append_receipt_fail;');
+  const saved = await h.value('update_workout', args, token), queried = await h.value('get_workout', { workout_id: read.workout_id }, token);
+  assert.equal(saved.stats.exercise_count, 2); assert.equal(saved.workout.entries[0].sets[0].w, 45);
+  assert.equal(saved.version, queried.version); assert.deepEqual(saved.workout, queried.workout);
+  assert.deepEqual(await h.value('update_workout', args, token), { ...saved, replayed: true });
+});

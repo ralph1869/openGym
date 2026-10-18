@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { newWorkout, correctWorkout, appendWorkout, calendarDate } from './mcp-workouts.js'
+import { newWorkout, correctWorkout, appendWorkout, calendarDate, workoutStats, searchExercises } from './mcp-workouts.js'
 import { workoutVolume, setsDone } from './history.js'
 import { convertWeight, convertBodyWeight } from './units.js'
 import { EXIDX } from './exercises.js'
@@ -74,5 +74,101 @@ describe('MCP writes the app completed-workout model', () => {
     const bad = input(); bad.entries[0].sets[0].weight = -1
     expect(() => newWorkout(s, bad, 'fixture', now)).toThrow(); expect(EXIDX['0025']).toBe(original)
     expect(() => newWorkout(state(), { ...input(), entries: [{ ...input().entries[0], exercise_id: '__proto__' }] }, 'fixture', now)).toThrow(/Unknown/)
+  })
+})
+
+describe('MCP load basis, independent sides and non-destructive appends', () => {
+  const sides = () => ({ L: { weight: 15, reps: 10 }, R: { weight: 12.5, reps: 8, done: false } })
+  const unilateral = () => ({ exercise_id: '0025', mode: 'reps', load_basis: 'app_display', execution: 'unilateral', sets: [{ sides: sides() }] })
+  it('keeps plates-per-side separate from unilateral execution without doubling any reading', () => {
+    const x = input(); x.entries[0].load_basis = 'plates_per_side'; x.entries[0].sets = [{ weight: 20, reps: 10 }]
+    const w = newWorkout(state(), x, 'fixture', now), e = w.entries[0]
+    expect(e.target.loadBasis).toBe('plates_per_side'); expect(e.target.side).toBeUndefined()
+    expect(e.sets[0]).toMatchObject({ w: 20, r: 10, done: true }); expect(e.note).toContain('每侧')
+    expect(w.vol).toBe(200); expect(workoutStats(w)).toMatchObject({ set_rows: 1, set_units: 1 })
+    x.entries[0].load_basis = 'unknown'; expect(() => newWorkout(state(), x, 'x', now)).toThrow(/note/)
+    x.entries[0].note = 'Original 20; angle and total/per-side meaning unresolved'
+    expect(newWorkout(state(), x, 'x', now).entries[0]).toMatchObject({ target: { loadBasis: 'unknown' }, sets: [{ w: 20 }] })
+  })
+  it('roundtrips asymmetric sides, completion and aggregate using the native UI model', () => {
+    const x = input(); x.entries = [unilateral()]
+    const s = state(), w = newWorkout(s, x, 'sides', now); s.workouts = [w]
+    expect(w.entries[0].target.side).toBe(true)
+    expect(w.entries[0].sets[0]).toMatchObject({ w: 15, r: 18, done: false, sides: { L: { w: 15, r: 10, done: true }, R: { w: 12.5, r: 8, done: false } } })
+    expect(w.vol).toBe(150); expect(setsDone(w)).toBe(1)
+    const changed = correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, side: 'R', weight: 17.5, reps: 9, done: true, rir: 2 }] }, now).workouts[0]
+    expect(changed.entries[0].sets[0]).toMatchObject({ w: 17.5, r: 19, done: true, sides: { L: { w: 15, r: 10 }, R: { w: 17.5, r: 9, rir: 2 } } })
+    expect(changed.vol).toBe(307.5); expect(w.entries[0].sets[0].sides.R.done).toBe(false)
+    expect(workoutStats(changed)).toMatchObject({ exercise_count: 1, set_rows: 1, set_units: 2, completed_set_units: 2 })
+  })
+  it('writes native warm-up phases for ordinary rows and can turn a warm-up into work explicitly', () => {
+    const x = input(); x.entries[0].sets = [{ weight: 20, reps: 10, warmup: true }, { weight: 60, reps: 8 }]
+    const s = state(), w = newWorkout(s, x, 'fixture', now); s.workouts = [w]
+    expect(w.entries[0].sets[0].phase).toBe('warmup'); expect(w.vol).toBe(480)
+    const changed = correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, warmup: false }] }, now).workouts[0]
+    expect(changed.entries[0].sets[0].phase).toBe('work'); expect(changed.vol).toBe(680)
+  })
+  it('preserves unilateral warm-ups when correcting either side and excludes their volume', () => {
+    const x = input(); x.entries = [{ ...unilateral(), sets: [{ sides: sides(), warmup: true }, { sides: sides() }] }]
+    const s = state(), w = newWorkout(s, x, 'fixture', now); s.workouts = [w]
+    const changed = correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, side: 'R', weight: 20, reps: 10, done: true }] }, now).workouts[0]
+    expect(changed.entries[0].sets[0]).toMatchObject({ phase: 'warmup', w: 20, r: 20, done: true })
+    expect(changed.vol).toBe(150); expect(workoutVolume(changed)).toBe(150)
+  })
+  it('appends sets and exercises atomically, preserving original indices, identity, media and unrelated state', () => {
+    const s = state(), w = newWorkout(s, input(), 'fixture', now); w.media = [{ id: 'keep' }]; s.workouts = [w]; s.week = { 1: ['keep'] }
+    const before = structuredClone(s)
+    const next = correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 1, weight: 65 }], append_sets: [{ entry_index: 0, sets: [{ weight: 62.5, reps: 8 }] }], append_entries: [unilateral()] }, now)
+    const edited = next.workouts[0]
+    expect(workoutStats(edited)).toMatchObject({ exercise_count: 2, set_rows: 4, set_units: 5, completed_set_units: 4 })
+    expect(edited.entries[0].sets.map(s => s.w)).toEqual([60, 65, 62.5]); expect(edited.media).toEqual(w.media); expect(edited.id).toBe(w.id); expect(next.week).toEqual(s.week); expect(s).toEqual(before)
+  })
+  it('converts side units once and never applies a second dumbbell pair multiplier', () => {
+    const s = state(); s.customEx = [{ id: 'fixture-bell', n: 'Synthetic dumbbell row', eq: 'dumbbell' }]
+    const x = input(); x.unit = 'lb'; x.entries = [{ ...unilateral(), exercise_id: 'fixture-bell', db_load: 'each' }]
+    const w = newWorkout(s, x, 'fixture', now)
+    const left = convertWeight(15, 'lb', 'kg')
+    expect(w.entries[0].sets[0].sides.L.w).toBe(left); expect(w.vol).toBe(left * 10)
+  })
+  it('refuses malformed, mixed, unsupported or entirely unfinished input instead of dropping an entry', () => {
+    const badRows = [{ sides: { L: { weight: 15, reps: 10 } } }, { sides: sides(), weight: 30 }, { sides: { L: { weight: 0, reps: 0, done: false }, R: { weight: 0, reps: 0, done: false } } }]
+    for (const row of badRows) {
+      const x = input(); x.entries.push({ ...unilateral(), sets: [row] }); expect(() => newWorkout(state(), x, 'bad', now)).toThrow()
+    }
+    const x = input(); x.entries = [{ ...unilateral(), mode: 'time' }]; expect(() => newWorkout(state(), x, 'bad', now)).toThrow(/reps/)
+    const s = state(), w = newWorkout(s, { ...input(), entries: [unilateral()] }, 'fixture', now); s.workouts = [w]
+    for (const change of [{ weight: 40 }, { side: 'X', weight: 40 }, { side: 'L', warmup: true }]) expect(() => correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, ...change }] }, now)).toThrow()
+    expect(() => correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 0, side: 'L', done: false }] }, now)).toThrow(/completed work/)
+  })
+  it('enforces post-append bounds, duplicate corrections, original indices and explicit units without mutating input', () => {
+    const s = state(), w = newWorkout(s, input(), 'fixture', now); s.workouts = [w]; const before = structuredClone(s)
+    const change = { entry_index: 0, set_index: 0, weight: 65 }
+    for (const patch of [
+      { append_entries: [unilateral()] },
+      { unit: 'kg', append_sets: [{ entry_index: 1, sets: [{ weight: 1, reps: 1 }] }], append_entries: [unilateral()] },
+      { unit: 'kg', set_changes: [change, change] },
+      { unit: 'kg', append_sets: [{ entry_index: 0, sets: Array.from({ length: 50 }, () => ({ weight: 1, reps: 1 })) }] },
+      { unit: 'kg', append_entries: [{ ...unilateral(), exercise_id: 'missing-id' }] }
+    ]) expect(() => correctWorkout(s, w, patch, now)).toThrow()
+    expect(s).toEqual(before)
+  })
+  it('keeps legacy correction indices compatible and enforces total limits only on new appends', () => {
+    const s = state(), w = newWorkout(s, input(), 'fixture', now)
+    w.entries[0].sets = Array.from({ length: 51 }, () => ({ w: 10, r: 10, done: true })); s.workouts = [w]
+    const next = correctWorkout(s, w, { unit: 'kg', set_changes: [{ entry_index: 0, set_index: 50, weight: 12 }] }, now)
+    expect(next.workouts[0].entries[0].sets[50].w).toBe(12)
+    const x = input(); x.entries = Array.from({ length: 10 }, () => ({ ...input().entries[0], sets: Array.from({ length: 50 }, () => ({ weight: 10, reps: 10 })) }))
+    const large = newWorkout(s, x, 'large', now); s.workouts = [large]
+    expect(() => correctWorkout(s, large, { unit: 'kg', append_entries: [unilateral()] }, now)).toThrow(/500/)
+    x.entries = Array.from({ length: 50 }, () => input().entries[0]); const many = newWorkout(s, x, 'many', now); s.workouts = [many]
+    expect(() => correctWorkout(s, many, { unit: 'kg', append_entries: [unilateral()] }, now)).toThrow(/50 exercises/)
+  })
+  it('finds existing English/Chinese catalogue candidates and distinguishes equipment without creating anything', () => {
+    const s = state(), before = structuredClone(s)
+    for (const query of ['坐姿划船', 'seated row', '高位下拉', '山羊挺身', '蝴蝶机夹胸', '哑铃弯举']) expect(searchExercises(s, query, 30).some(e => e.source === 'catalogue')).toBe(true)
+    const cable = searchExercises(s, '坐姿划船', 30, 'cable')
+    expect(cable.length).toBeGreaterThan(0); expect(cable.every(e => e.equipment === 'cable')).toBe(true)
+    expect(searchExercises(s, 'constructor')).toEqual([]); expect(searchExercises(s, '__proto__')).toEqual([])
+    expect(searchExercises(s, 'nonexistent original machine')).toEqual([]); expect(s).toEqual(before)
   })
 })

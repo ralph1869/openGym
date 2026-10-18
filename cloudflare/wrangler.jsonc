@@ -18,9 +18,8 @@
     "database_id": "20b9fca6-a6a2-419c-ba11-702aa936bac4",
     "migrations_dir": "migrations"
   }],
+  "keep_vars": true,
   "vars": {
-    "MCP_ENABLED": "false",
-    "MCP_REDIRECT_URIS": "[]",
     "ORIGIN": "https://gym.ralph.run",
     "RP_ID": "gym.ralph.run",
     "DEFAULT_LANG": "zh-CN",
