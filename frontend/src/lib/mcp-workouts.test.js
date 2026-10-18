@@ -163,6 +163,15 @@ describe('MCP load basis, independent sides and non-destructive appends', () => 
     x.entries = Array.from({ length: 50 }, () => input().entries[0]); const many = newWorkout(s, x, 'many', now); s.workouts = [many]
     expect(() => correctWorkout(s, many, { unit: 'kg', append_entries: [unilateral()] }, now)).toThrow(/50 exercises/)
   })
+  it('matches common full Chinese cable names in either word order with the plugin limit of three', () => {
+    const s = state(), before = structuredClone(s)
+    for (const [query, id] of [['坐姿绳索划船', '0861'], ['绳索坐姿划船', '0861'], ['高位绳索下拉', '0198'], ['绳索高位下拉', '0198']]) {
+      const found = searchExercises(s, query, 3)
+      expect(found.length).toBeLessThanOrEqual(3)
+      expect(found[0]).toMatchObject({ id, source: 'catalogue', equipment: 'cable' })
+    }
+    expect(s).toEqual(before)
+  })
   it('finds existing English/Chinese catalogue candidates and distinguishes equipment without creating anything', () => {
     const s = state(), before = structuredClone(s)
     for (const query of ['坐姿划船', 'seated row', '高位下拉', '山羊挺身', '蝴蝶机夹胸', '哑铃弯举']) expect(searchExercises(s, query, 30).some(e => e.source === 'catalogue')).toBe(true)

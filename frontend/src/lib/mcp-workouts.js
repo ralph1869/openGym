@@ -69,6 +69,8 @@ const SEARCH_ALIASES = {
   '哑铃弯举': 'dumbbell biceps curl', '俯卧哑铃划船': 'dumbbell lying row', 'lat pulldown': 'pulldown',
   '肩推': 'shoulder press', '固定器械肩推': 'lever shoulder press',
   '蝴蝶机夹胸': 'pec deck fly', '高位下拉': 'pulldown', '坐姿划船': 'seated row',
+  '坐姿绳索划船': 'cable seated row', '绳索坐姿划船': 'cable seated row',
+  '高位绳索下拉': 'cable pulldown', '绳索高位下拉': 'cable pulldown',
   '反向飞鸟': 'reverse fly', '山羊挺身': 'hyperextension', '绳索侧平举': 'cable lateral raise',
   '坐姿夹腿': 'hip adduction', '坐姿张腿': 'hip abduction', '坐姿腿屈伸': 'leg extension'
 }

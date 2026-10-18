@@ -170,7 +170,7 @@ export async function handleMcp(req, env, ctx) {
   if (b.jsonrpc !== '2.0' || typeof b.method !== 'string' || (b.id != null && typeof b.id !== 'string' && !Number.isSafeInteger(b.id))) return json(400, rpcError(null, -32600, 'Invalid JSON-RPC request'));
   if (!Object.hasOwn(b, 'id')) return b.method.startsWith('notifications/') ? new Response(null, { status: 202 }) : json(400, rpcError(null, -32600, 'Only notifications may omit id'));
   const respond = (result, status = 200, headers = {}) => json(status, { jsonrpc: '2.0', id: b.id, result }, headers);
-  if (b.method === 'initialize') return respond({ protocolVersion: versions.includes(b.params?.protocolVersion) ? b.params.protocolVersion : versions[0], capabilities: { tools: {} }, serverInfo: { name: 'opengym-cloudflare', version: '0.3.0' }, instructions: 'Training tools require OAuth consent. Never invent workout facts. Keep request_id fixed across retries and honor revision conflicts.' });
+  if (b.method === 'initialize') return respond({ protocolVersion: versions.includes(b.params?.protocolVersion) ? b.params.protocolVersion : versions[0], capabilities: { tools: {} }, serverInfo: { name: 'opengym-cloudflare', version: '0.3.1' }, instructions: 'Training tools require OAuth consent. Never invent workout facts. Keep request_id fixed across retries and honor revision conflicts.' });
   if (b.method === 'ping') return respond({});
   if (b.method === 'tools/list') return respond({ tools: MCP_TOOLS });
   if (b.method !== 'tools/call') return json(200, rpcError(b.id, -32601, 'Method not found'));

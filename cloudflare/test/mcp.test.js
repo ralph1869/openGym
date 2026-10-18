@@ -346,3 +346,16 @@ test('an append correction and its full receipt roll back together after a D1 re
   assert.equal(saved.version, queried.version); assert.deepEqual(saved.workout, queried.workout);
   assert.deepEqual(await h.value('update_workout', args, token), { ...saved, replayed: true });
 });
+
+test('plugin full Chinese cable queries return the existing canonical ids with limit three and no writes', async t => {
+  const h = await setup(t), c = await h.connection('workouts:read'), token = c.access_token;
+  const before = await h.appState();
+  for (const [query, id] of [['坐姿绳索划船', '0861'], ['绳索坐姿划船', '0861'], ['高位绳索下拉', '0198'], ['绳索高位下拉', '0198']]) {
+    const result = await h.value('search_exercises', { query, limit: 3 }, token);
+    assert.ok(result.exercises.length <= 3); assert.equal(result.exercises[0].id, id);
+    assert.equal(result.exercises[0].source, 'catalogue'); assert.equal(result.exercises[0].equipment, 'cable');
+    assert.ok(result.supported_load_bases.includes('plates_per_side')); assert.ok(result.side_execution);
+  }
+  assert.deepEqual(await h.appState(), before);
+  assert.equal((await h.db.prepare('SELECT COUNT(*) AS n FROM mcp_receipts').first()).n, 0);
+});
