@@ -1,0 +1,44 @@
+{
+  "repository": "https://github.com/muxuezzz/exercises-dataset-zh-cn",
+  "commit": "a58b790ea0d8c145b85b18dd2ed35ce504dc6699",
+  "path": "locales/zh-CN.js",
+  "sourceSha256": "4549c519ec4b384e228a88fa7ce205c219fc391499a74703e98c8a589a28acd3",
+  "licenseSha256": "99230e0c2e74c54386e31e7282fc4d939ca14942df542b706fcd9fa71c3187fa",
+  "instructionsSha256": "43cd5df92a66f4a5f0d6e3d0452f9c8bd2e829d02bfce862f43e2a5377ad8018",
+  "instructionHashFormat": "SHA-256 of UTF-8 compact JSON [[id, steps], ...], sorted by ID; unescaped Unicode",
+  "importedExercises": 1324,
+  "importedSteps": 7662,
+  "localInstructionIds": [
+    "1030",
+    "3593"
+  ],
+  "bilingualDescriptionIds": [
+    "0178",
+    "0198",
+    "0294",
+    "0489",
+    "0585",
+    "0597",
+    "0598",
+    "0602",
+    "0861",
+    "1030",
+    "3593"
+  ],
+  "reviewedInstructionOverrides": [
+    {
+      "id": "0198",
+      "step": 6,
+      "source": "在动作底部暂停片刻，然后慢慢松开拉杆回到起始位置。",
+      "translation": "在动作底部暂停片刻，然后缓慢将拉杆还原至起始位置。",
+      "reason": "Translate release the bar back as a controlled return, without implying release of the grip."
+    },
+    {
+      "id": "0489",
+      "step": 3,
+      "source": "将上半身压向地面，同时保持背部挺直。",
+      "translation": "保持背部挺直，向地面方向放低上半身。",
+      "reason": "Translate lower as lowering the torso, without implying additional pressing force."
+    }
+  ]
+}

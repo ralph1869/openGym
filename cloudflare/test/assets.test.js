@@ -15,7 +15,9 @@ test('the production bundle serves the app, every licensed media asset and notic
     const digest = p => createHash('sha256').update(readFileSync(p)).digest('hex');
     for (const f of files) assert.equal(digest(new URL(f, dest)), digest(new URL(f, source)), 'media changed: ' + f);
   }
-  for (const f of ['LICENSE', 'NOTICE.md']) assert.equal(readFileSync(new URL('../dist/' + f, import.meta.url), 'utf8'), readFileSync(new URL('../../' + f, import.meta.url), 'utf8'));
+  const notices = ['LICENSE', 'NOTICE.md', 'catalogue/sources/exercises-dataset-zh-cn/LICENSE',
+    'catalogue/sources/exercises-dataset-zh-cn/README.md', 'catalogue/sources/exercises-dataset-zh-cn/source.json'];
+  for (const f of notices) assert.equal(readFileSync(new URL('../dist/' + f, import.meta.url), 'utf8'), readFileSync(new URL('../../' + f, import.meta.url), 'utf8'));
   assert.equal(readFileSync(new URL('../dist/exercise-media/NOTICE.md', import.meta.url), 'utf8'), readFileSync(new URL('../../catalogue/media/NOTICE.md', import.meta.url), 'utf8'));
   const bundle = await build({ entryPoints: [new URL('../src/worker.js', import.meta.url).pathname], bundle: true,
     platform: 'browser', format: 'esm', target: 'es2022', write: false });
@@ -34,7 +36,7 @@ test('the production bundle serves the app, every licensed media asset and notic
     assert.equal(r.status, 200, p + ': ' + html.slice(0, 200));
     assert.match(html, /<div id="root">/);
   }
-  for (const p of ['/exercise-media/still/0025.webp', '/exercise-media/clip/0025.mp4', '/LICENSE', '/NOTICE.md', '/exercise-media/NOTICE.md', '/sw.js']) {
+  for (const p of ['/exercise-media/still/0025.webp', '/exercise-media/clip/0025.mp4', '/LICENSE', '/NOTICE.md', '/exercise-media/NOTICE.md', '/sw.js', ...notices.map(f => '/' + f)]) {
     const r = await request(p); assert.equal(r.status, 200, p); assert.ok((await r.arrayBuffer()).byteLength > 10);
     assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   }

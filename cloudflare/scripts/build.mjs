@@ -17,7 +17,13 @@ execFileSync('npm', ['run', 'build', '--', '--base=/', '--outDir', out], {
 execFileSync(process.execPath, ['scripts/catalogue/stage-media.mjs', out], {
   cwd: root, stdio: 'inherit', env: { ...process.env, APP_MEDIA_DIR: '', VITE_CLIP_EXT: 'mp4' }
 });
-for (const file of ['LICENSE', 'NOTICE.md']) cpSync(path.join(root, file), path.join(out, file));
+for (const file of ['LICENSE', 'NOTICE.md',
+  'catalogue/sources/exercises-dataset-zh-cn/LICENSE',
+  'catalogue/sources/exercises-dataset-zh-cn/README.md',
+  'catalogue/sources/exercises-dataset-zh-cn/source.json']) {
+  mkdirSync(path.dirname(path.join(out, file)), { recursive: true });
+  cpSync(path.join(root, file), path.join(out, file));
+}
 writeFileSync(path.join(out, '_headers'), `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: same-origin

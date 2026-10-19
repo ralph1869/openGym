@@ -71,8 +71,8 @@ shipped before v1.4.0) keep names, muscles and instructions that originate from
 [**ExerciseDB v1**](https://exercisedb.dev/) by AscendAPI and reached openGym through
 [**hasaneyldrm/exercises-dataset**](https://github.com/hasaneyldrm/exercises-dataset), under the MIT
 licence reproduced below. Everything else in the catalogue (the newer exercises, every description,
-the muscle-map corrections and all translations) was written for openGym and is covered by
-openGym's AGPL.
+the muscle-map corrections and translations other than the Simplified Chinese import below)
+was written for openGym and is covered by openGym's AGPL.
 
 ```
 MIT License
@@ -103,6 +103,21 @@ English source produced with OpenAI Codex and Anthropic Claude Code
 language-model assistance. They are not copied from a separate Portuguese
 dataset. Their review status and translation policy are documented alongside
 the source files.
+
+### Simplified Chinese community instructions (personal fork)
+
+The 1,324 Simplified Chinese instruction lists in `catalogue/i18n/zh.json`
+(original v1.3 exercise IDs) are imported by exact ID, with two locally reviewed
+step wording clarifications recorded in the provenance below, from
+[**muxuezzz/exercises-dataset-zh-cn**](https://github.com/muxuezzz/exercises-dataset-zh-cn/blob/a58b790ea0d8c145b85b18dd2ed35ce504dc6699/locales/zh-CN.js),
+commit `a58b790ea0d8c145b85b18dd2ed35ce504dc6699`, under its **MIT License**.
+The source's copyright and complete license (including its media exception) are
+retained at [catalogue/sources/exercises-dataset-zh-cn/LICENSE](catalogue/sources/exercises-dataset-zh-cn/LICENSE).
+The [provenance record](catalogue/sources/exercises-dataset-zh-cn/README.md) documents
+hashes, scope and local additions. No community media is imported or licensed by
+this text import. The two additional Chinese instruction lists and the eleven
+bilingual descriptions are local translations of existing openGym English text;
+other existing translations are unchanged.
 
 ## Gym check-in QR codes
 
