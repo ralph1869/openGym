@@ -117,7 +117,7 @@ async function handle(req, env, path) {
   const key = req.method + ' ' + path;
   if (key === 'GET /api/health') {
     await env.DB.prepare('SELECT 1 FROM users LIMIT 1').first();
-    return json(200, { ok: true, storage: 'd1', version: '1.4.1+cloudflare' });
+    return json(200, { ok: true, storage: 'd1', version: '1.4.1+cloudflare.security-20261028' });
   }
   if (key === 'GET /api/config') return json(200, {
     invite_only: true, allow_guest: false, password_login: false,

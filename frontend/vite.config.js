@@ -116,5 +116,6 @@ export default defineConfig({
       } : {})
     }
   },
-  build: { chunkSizeWarningLimit: 1500 }
+  // Match the oldest supported Safari; the bundle syntax guard checks unlowerable syntax.
+  build: { chunkSizeWarningLimit: 1500, target: ['safari15', 'chrome100', 'firefox100', 'edge100'] }
 })

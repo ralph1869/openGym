@@ -71,3 +71,12 @@ npm run check
 ## 已知上游测试边界
 
 基准 `e348fc17c42c7e9a211c5972e573ad3698190ee2` 的原 Node API 测试在本任务日期有 10 个失败（596 项中 586 项通过），涉及未迁移的 AI/coach fixture 和 payload。已经在独立、未修改的基准 worktree 重现同样的 10 个失败。不能把原 API 全套称为通过；本改造不修复或迁移这些模块。
+
+## Security maintenance (2026-10-28)
+
+This remains the 1.4.1 Cloudflare personal edition, with selected v1.4.3 fixes backported, not a full v1.4.3 migration:
+
+- `0494ff666a250b55f2a9c1bcb37161e8ce652eca`: normalize API base paths and refuse cross-origin resolution (GHSA-375x-wfvj-jf7q).
+- `70a74ee7af2c84a3c7a9c2b1673db78e22b43696`: Safari 15 build target, remove regex lookbehind, and verify generated bundle syntax.
+
+No D1 schema, authentication, OAuth/MCP, capabilities, translations, or media changes are included. Roll back the Worker version for a code rollback; a database restore is not required for these patches.

@@ -9,7 +9,7 @@ rmSync(out, { recursive: true, force: true });
 execFileSync('npm', ['run', 'build', '--', '--base=/', '--outDir', out], {
   cwd: path.join(root, 'frontend'), stdio: 'inherit', env: {
     ...process.env, VITE_CLOUDFLARE: '1', VITE_DEMO: '0', VITE_MOBILE: '0',
-    APP_BUILD: 'cloudflare', VITE_SOURCE_URL: process.env.VITE_SOURCE_URL || 'https://github.com/ralph1869/openGym/tree/feat/cloudflare-d1',
+    APP_BUILD: 'cloudflare.security-20261028', VITE_SOURCE_URL: process.env.VITE_SOURCE_URL || 'https://github.com/ralph1869/openGym/tree/feat/cloudflare-d1',
     // Only the licensed repository's unmodified 180 px media can go to a web deployment.
     VITE_CLIP_EXT: 'mp4', APP_MEDIA_DIR: '', VITE_UMAMI_SRC: '', VITE_UMAMI_ID: ''
   }
