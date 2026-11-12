@@ -29,7 +29,7 @@
 - `/oauth/authorize` 要求网站登录。未登录时本人另开网站用现有 Passkey 登录，返回授权页刷新。页面显示客户端名、完整回调和独立权限框；默认只读取，新增和更正都需本人勾选。
 - 同意时再次验证 Passkey UV，挑战绑定账号、会话版本和所选权限，5 分钟一次性有效；不能超出客户端请求的 scope。
 - 授权码 60 秒、一次使用，绑定 client/redirect/resource/PKCE/用户。回调带原始 state 和 `iss`。
-- 不透明 access token 15 分钟；授权和 refresh 固定最多 7 天，不无限续期。D1 只存 SHA-256。refresh 每次轮换，旧 refresh 重用会撤销整次连接，客户端应串行刷新。
+- 不透明 access token 15 分钟；新授权和 refresh 长期有效（expires=-1），直到主动撤销、退出全部设备或刷新令牌重用等安全失效。已有时间戳授权保留原期限，不自动延长，也不恢复已失效授权；需重新授权一次以采用长期策略。D1 只存 SHA-256。refresh 每次轮换，旧 refresh 重用会撤销整次连接，客户端应串行刷新。
 - 设置 → 账号 → 已连接的 AI 助手，或 `/oauth/connections`，可撤销授权，训练保留。撤销、过期和退出所有设备都会使连接失效。
 - Bearer 不能用于 `/api/data` 或账号管理；网站 Cookie 不能代替 MCP 授权。所有入口限定配置的 `ORIGIN`，旧 workers.dev 不能混用。
 - 不转发第三方 token，不使用共享管理员凭据，不记录授权响应/token/训练负载。OAuth token 由客户端保存，模型只看工具结果。

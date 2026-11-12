@@ -87,7 +87,7 @@ test('OAuth rejects unapproved redirects, wildcard/prefix tricks, unknown scopes
 test('consent requires a live owner session and fresh UV Passkey proof, and cannot be replayed', async t => {
   const h = await setup(t), c = await h.connection('workouts:read', false);
   const noSession = await h.request('/oauth/authorize?' + new URLSearchParams(c.authorization)); assert.equal(noSession.status, 401); assert.match(noSession.data, /先验证/);
-  const page = await h.request('/oauth/authorize?' + new URLSearchParams(c.authorization), { cookie: h.cookie }); assert.match(page.headers.get('Content-Security-Policy'), /frame-ancestors 'none'/); assert.match(page.data, /最多 7 天/);
+  const page = await h.request('/oauth/authorize?' + new URLSearchParams(c.authorization), { cookie: h.cookie }); assert.match(page.headers.get('Content-Security-Policy'), /frame-ancestors 'none'/); assert.match(page.data, /授权长期有效/);
   assert.equal((await h.request('/oauth/consent/options', { method: 'POST', body: { authorization: c.authorization } })).status, 401);
   let opts = await h.request('/oauth/consent/options', { method: 'POST', cookie: h.cookie, body: { authorization: c.authorization } });
   assert.equal((await h.request('/oauth/consent/verify', { method: 'POST', cookie: h.cookie, body: { cid: opts.data.cid, credential: h.a.login(opts.data.options, ORIGIN, { uv: false }) } })).status, 403);
@@ -358,4 +358,33 @@ test('plugin full Chinese cable queries return the existing canonical ids with l
   }
   assert.deepEqual(await h.appState(), before);
   assert.equal((await h.db.prepare('SELECT COUNT(*) AS n FROM mcp_receipts').first()).n, 0);
+});
+
+test('until-revoked grants survive cleanup and refresh while access tokens stay short-lived', async t => {
+  const h = await setup(t), c = await h.connection('workouts:read');
+  assert.equal(c.expires_in, 900);
+  const grant = await h.db.prepare('SELECT * FROM oauth_grants').first();
+  assert.equal(grant.expires, -1);
+  assert.equal((await h.db.prepare('SELECT expires FROM oauth_refresh').first()).expires, -1);
+  const access = await h.db.prepare('SELECT expires FROM oauth_access').first();
+  assert.ok(access.expires > Date.now() && access.expires <= Date.now() + 900000);
+  await h.request('/oauth/register', { method: 'POST', body: { client_name: 'Cleanup fixture', redirect_uris: [REDIRECT] } });
+  assert.equal((await h.db.prepare('SELECT id FROM oauth_grants WHERE id=?').bind(grant.id).first()).id, grant.id);
+  assert.match((await h.request('/oauth/connections', { cookie: h.cookie })).data, /长期有效/);
+  await h.db.prepare('UPDATE oauth_access SET expires=0').run();
+  assert.equal((await h.rpc('get_training_context', {}, c.access_token)).status, 401);
+  const next = await h.request('/oauth/token', { method: 'POST', form: { grant_type: 'refresh_token', client_id: c.client_id, refresh_token: c.refresh_token } });
+  assert.equal(next.status, 200); assert.equal(next.data.expires_in, 900);
+  assert.notEqual(next.data.refresh_token, c.refresh_token);
+  assert.equal((await h.rpc('get_training_context', {}, next.data.access_token)).status, 200);
+});
+test('legacy timestamp grants retain their original expiry when refreshed', async t => {
+  const h = await setup(t), c = await h.connection('workouts:read'), expires = Date.now() + 60000;
+  await h.db.prepare('UPDATE oauth_grants SET expires=?').bind(expires).run();
+  await h.db.prepare('UPDATE oauth_refresh SET expires=?').bind(expires).run();
+  const next = await h.request('/oauth/token', { method: 'POST', form: { grant_type: 'refresh_token', client_id: c.client_id, refresh_token: c.refresh_token } });
+  assert.equal(next.status, 200); assert.ok(next.data.expires_in <= 60);
+  assert.equal((await h.db.prepare('SELECT expires FROM oauth_grants').first()).expires, expires);
+  const rows = await h.db.prepare('SELECT expires FROM oauth_refresh').all();
+  assert.ok(rows.results.every(r => r.expires === expires));
 });

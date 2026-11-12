@@ -85,7 +85,7 @@ export async function writeState(db, uid, cur, prepared, { authorization = null,
   const authSQL = authorization ? ` AND EXISTS (SELECT 1 FROM oauth_access a
     JOIN oauth_grants g ON g.id=a.grant_id JOIN users u ON u.id=g.user_id
     WHERE a.hash=? AND g.id=? AND u.id=? AND g.revoked=0 AND g.sv=u.session_version
-    AND a.expires>unixepoch()*1000+999 AND g.expires>unixepoch()*1000+999
+    AND a.expires>unixepoch()*1000+999 AND (g.expires=-1 OR g.expires>unixepoch()*1000+999)
     AND instr(' '||g.scope||' ',' '||?||' ')>0)` : '';
   const authParams = authorization ? [authorization.accessHash, authorization.grantId, uid, authorization.scope] : [];
   const claim = cur

@@ -3,7 +3,10 @@ import { HttpError, randomToken, sha256, b64url, unb64url, utf8 } from './crypto
 
 export const SCOPES = ['workouts:read', 'workouts:create', 'workouts:update'];
 export const mcpEnabled = env => env.MCP_ENABLED === 'true';
-const ACCESS_MS = 15 * 60000, GRANT_MS = 7 * 86400000;
+const ACCESS_MS = 15 * 60000;
+// -1 means until revoked; existing timestamp-based grants retain their expiry.
+const UNTIL_REVOKED = -1;
+const expired = (expires, now) => expires !== UNTIL_REVOKED && expires <= now;
 const liveTime = 'unixepoch()*1000+999'; // conservative through the current second
 export function scopesOf(value = 'workouts:read') {
   if (typeof value !== 'string' || value.length > 200) throw new HttpError(400, 'Invalid scope', 'invalid_scope');
@@ -21,7 +24,7 @@ export async function bearer(req, env, origin) {
   if (!match) return null;
   const hash = await sha256(match[1]);
   const a = await env.DB.prepare(`SELECT g.* FROM oauth_access a JOIN oauth_grants g ON g.id=a.grant_id
-    JOIN users u ON u.id=g.user_id WHERE a.hash=? AND a.expires>? AND g.expires>?
+    JOIN users u ON u.id=g.user_id WHERE a.hash=? AND a.expires>? AND (g.expires=-1 OR g.expires>?)
     AND g.revoked=0 AND g.sv=u.session_version AND g.resource=?`).bind(hash, Date.now(), Date.now(), origin + '/mcp').first();
   return a ? { ...a, accessHash: hash, grantId: a.id } : null;
 }
@@ -84,7 +87,7 @@ const scopeLabels = { 'workouts:read': '查询训练记录和动作目录', 'wor
 function consentPage(a, origin, loggedIn) {
   if (!loggedIn) return html('<h1>先验证你的 openGym 身份</h1><p>请在新标签页登录网站，然后返回此页刷新。授权不会使用邀请码或账号密码。</p><a href="/" target="_blank" rel="noopener">打开网站，用通行密钥登录</a>', '', 401);
   const denied = new URL(a.redirect_uri); denied.searchParams.set('error', 'access_denied'); denied.searchParams.set('state', a.state); denied.searchParams.set('iss', origin);
-  const body = `<h1>允许 AI 助手访问训练记录？</h1><p>客户端：<strong>${escapeHTML(a.client_name)}</strong></p><p>回调地址：<code>${escapeHTML(a.redirect_uri)}</code></p><ul>${a.scope.split(' ').map(s => `<li><label><input type="checkbox" name="permission" value="${s}" ${s === 'workouts:read' ? 'checked disabled' : ''}>${scopeLabels[s]}</label></li>`).join('')}</ul><p>写入权限需要你自行勾选。仅限你的训练记录。不能删除训练、修改账号、读取凭据或读取整份个人档案。授权最多 7 天，访问令牌 15 分钟；可随时在“已连接助手”撤销。</p><button id="approve">同意并用通行密钥验证</button><a href="${escapeHTML(denied.href)}">拒绝</a><p id="error" role="alert"></p>`;
+  const body = `<h1>允许 AI 助手访问训练记录？</h1><p>客户端：<strong>${escapeHTML(a.client_name)}</strong></p><p>回调地址：<code>${escapeHTML(a.redirect_uri)}</code></p><ul>${a.scope.split(' ').map(s => `<li><label><input type="checkbox" name="permission" value="${s}" ${s === 'workouts:read' ? 'checked disabled' : ''}>${scopeLabels[s]}</label></li>`).join('')}</ul><p>写入权限需要你自行勾选。仅限你的训练记录。不能删除训练、修改账号、读取凭据或读取整份个人档案。授权长期有效，直到你主动撤销或因安全原因失效；访问令牌 15 分钟，刷新令牌每次轮换。可随时在“已连接助手”撤销。</p><button id="approve">同意并用通行密钥验证</button><a href="${escapeHTML(denied.href)}">拒绝</a><p id="error" role="alert"></p>`;
   const payload = JSON.stringify(a).replaceAll('<', '\\u003c');
   const script = `const request=${payload};const button=document.getElementById('approve');
 const decode=s=>Uint8Array.from(atob(s.replaceAll('-','+').replaceAll('_','/')),c=>c.charCodeAt(0));
@@ -95,7 +98,7 @@ button.onclick=async()=>{button.disabled=true;try{const approved_scope=Array.fro
 }
 function tokenInsert(db, table, hash, gid, expires) {
   return db.prepare(`INSERT INTO ${table}(hash,grant_id,expires) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM oauth_grants g
-    JOIN users u ON u.id=g.user_id WHERE g.id=? AND g.revoked=0 AND g.sv=u.session_version AND g.expires>${liveTime})`).bind(hash, gid, expires, gid);
+    JOIN users u ON u.id=g.user_id WHERE g.id=? AND g.revoked=0 AND g.sv=u.session_version AND (g.expires=-1 OR g.expires>${liveTime}))`).bind(hash, gid, expires, gid);
 }
 export async function handleOAuth(req, env, path, ctx) {
   const { json, site, requireUser, csrf, readBody, throttle } = ctx, origin = site(env).origin;
@@ -119,7 +122,7 @@ export async function handleOAuth(req, env, path, ctx) {
       const redirects = [...new Set(b.redirect_uris.map(x => redirectURI(x, origin)))], id = randomToken(), scope = scopesOf(b.scope || SCOPES.join(' '));
       if (redirects.some(uri => !approvedCallback(env, uri))) oauthError('Callback URI is not approved by the instance owner', 'invalid_client_metadata');
       await env.DB.batch([
-        env.DB.prepare('DELETE FROM oauth_grants WHERE expires<=?').bind(Date.now() - 86400000),
+        env.DB.prepare('DELETE FROM oauth_grants WHERE expires<>-1 AND expires<=?').bind(Date.now() - 86400000),
         env.DB.prepare('DELETE FROM oauth_codes WHERE expires<=?').bind(Date.now())
       ]);
       const result = await env.DB.prepare(`INSERT INTO oauth_clients(id,name,redirects,scope,created)
@@ -181,7 +184,7 @@ export async function handleOAuth(req, env, path, ctx) {
         const hash = await sha256(b.code), c = await env.DB.prepare(`SELECT c.* FROM oauth_codes c JOIN users u ON u.id=c.user_id WHERE c.hash=? AND c.client_id=? AND c.sv=u.session_version`).bind(hash, b.client_id).first();
         const challenge = b64url(await crypto.subtle.digest('SHA-256', utf8.encode(b.code_verifier)).then(v => new Uint8Array(v)));
         if (!c || c.consumed || c.expires <= now || c.redirect_uri !== b.redirect_uri || c.resource !== rp || c.challenge !== challenge) oauthError('Invalid or expired authorization code', 'invalid_grant');
-        gid = randomToken(); scope = c.scope; expires = now + GRANT_MS;
+        gid = randomToken(); scope = c.scope; expires = UNTIL_REVOKED;
         const result = await env.DB.batch([
           env.DB.prepare(`UPDATE oauth_codes SET consumed=? WHERE hash=? AND consumed IS NULL AND expires>${liveTime}
             AND EXISTS(SELECT 1 FROM users WHERE id=? AND session_version=?)`).bind(mark, hash, c.user_id, c.sv),
@@ -195,19 +198,19 @@ export async function handleOAuth(req, env, path, ctx) {
         if (!/^ogmr_[A-Za-z0-9_-]{43}$/.test(b.refresh_token || '')) oauthError('Invalid refresh token', 'invalid_grant');
         const hash = await sha256(b.refresh_token), row = await env.DB.prepare(`SELECT r.consumed,r.expires AS refresh_expires,g.* FROM oauth_refresh r JOIN oauth_grants g ON g.id=r.grant_id JOIN users u ON u.id=g.user_id
           WHERE r.hash=? AND g.client_id=? AND g.sv=u.session_version`).bind(hash, b.client_id).first();
-        if (!row || row.revoked || row.expires <= now || row.refresh_expires <= now || row.resource !== rp) oauthError('Expired or revoked refresh token', 'invalid_grant');
+        if (!row || row.revoked || expired(row.expires, now) || expired(row.refresh_expires, now) || row.resource !== rp) oauthError('Expired or revoked refresh token', 'invalid_grant');
         if (row.consumed) { await env.DB.prepare('UPDATE oauth_grants SET revoked=1 WHERE id=?').bind(row.id).run(); oauthError('Refresh token reuse revoked this connection', 'invalid_grant'); }
         if (b.scope && scopesOf(b.scope) !== row.scope) oauthError('Refresh cannot change scopes', 'invalid_scope');
         gid = row.id; scope = row.scope; expires = row.expires;
         const result = await env.DB.batch([
-          env.DB.prepare(`UPDATE oauth_refresh SET consumed=? WHERE hash=? AND consumed IS NULL AND expires>${liveTime}
-            AND EXISTS(SELECT 1 FROM oauth_grants g JOIN users u ON u.id=g.user_id WHERE g.id=? AND g.revoked=0 AND g.sv=u.session_version AND g.expires>${liveTime})`).bind(mark, hash, gid),
+          env.DB.prepare(`UPDATE oauth_refresh SET consumed=? WHERE hash=? AND consumed IS NULL AND (expires=-1 OR expires>${liveTime})
+            AND EXISTS(SELECT 1 FROM oauth_grants g JOIN users u ON u.id=g.user_id WHERE g.id=? AND g.revoked=0 AND g.sv=u.session_version AND (g.expires=-1 OR g.expires>${liveTime}))`).bind(mark, hash, gid),
           env.DB.prepare(`INSERT INTO oauth_access(hash,grant_id,expires) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM oauth_refresh WHERE hash=? AND consumed=?)`).bind(await sha256(access), gid, now + ACCESS_MS, hash, mark),
           env.DB.prepare(`INSERT INTO oauth_refresh(hash,grant_id,expires) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM oauth_refresh WHERE hash=? AND consumed=?)`).bind(await sha256(refresh), gid, expires, hash, mark)
         ]);
         if (!result[0].meta.changes) { await env.DB.prepare('UPDATE oauth_grants SET revoked=1 WHERE id=?').bind(gid).run(); oauthError('Refresh token already used', 'invalid_grant'); }
       } else oauthError('Only authorization_code and refresh_token are supported', 'unsupported_grant_type');
-      return json(200, { access_token: access, token_type: 'Bearer', expires_in: Math.min(ACCESS_MS / 1000, Math.max(0, Math.floor((expires - now) / 1000))), refresh_token: refresh, scope });
+      return json(200, { access_token: access, token_type: 'Bearer', expires_in: expires === UNTIL_REVOKED ? ACCESS_MS / 1000 : Math.min(ACCESS_MS / 1000, Math.max(0, Math.floor((expires - now) / 1000))), refresh_token: refresh, scope });
     }
     if (req.method === 'POST' && path === '/oauth/revoke') {
       await throttle(req, env); const b = await form(req); await client(env, b.client_id);
@@ -221,7 +224,7 @@ export async function handleOAuth(req, env, path, ctx) {
       const u = await requireUser(req, env);
       const { results } = await env.DB.prepare(`SELECT g.id,c.name,g.scope,g.created,g.expires,g.revoked FROM oauth_grants g JOIN oauth_clients c ON c.id=g.client_id WHERE g.user_id=? ORDER BY g.created DESC LIMIT 100`).bind(u.id).all();
       if (path === '/api/integrations') return json(200, { connections: results });
-      const list = results.map(g => `<li>${escapeHTML(g.name)} — ${g.scope.split(' ').map(s => scopeLabels[s] || '未知权限').join('、')} — ${g.revoked || g.expires <= Date.now() ? '已失效' : `<button data-id="${g.id}">撤销授权</button>`}</li>`).join('');
+      const list = results.map(g => `<li>${escapeHTML(g.name)} — ${g.scope.split(' ').map(s => scopeLabels[s] || '未知权限').join('、')} — ${g.revoked || expired(g.expires, Date.now()) ? '已失效' : `<button data-id="${g.id}">撤销授权</button>${g.expires === UNTIL_REVOKED ? '（长期有效）' : ''}`}</li>`).join('');
       return html(`<h1>已连接的 AI 助手</h1><p>撤销后，助手不能再读写训练。训练记录会保留。</p><ul>${list || '<li>尚无授权</li>'}</ul><p id="error"></p><a href="/">返回 openGym</a>`, `for(const b of document.querySelectorAll('button[data-id]'))b.onclick=async()=>{b.disabled=true;try{const r=await fetch('/api/integrations/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});if(!r.ok)throw Error('撤销未完成，请重试');location.reload();}catch(e){document.getElementById('error').textContent=e.message;b.disabled=false;}};`);
     }
     if (path === '/api/integrations/revoke' && req.method === 'POST') {
